@@ -13,7 +13,7 @@ from langsmith import traceable
 from .recruiting_records import JOB_POSTINGS, CANDIDATES, RECRUITER_IDS
 
 __all__ = [
-    "get_job_posting", "get_candidate_record",
+    "get_job_posting", "get_candidate_record", "get_candidate_record_by_email",
     "fetch_work_history", "fetch_education", "fetch_skills",
     "get_profile_from_db", "save_profile_to_db",
     "get_recruiter",
@@ -34,6 +34,17 @@ def get_job_posting(job_id):
 def get_candidate_record(candidate_id):
     "Return the source candidate record for candidate_id, or None if not found."
     return CANDIDATES.get(candidate_id)
+
+
+def get_candidate_record_by_email(email):
+    "Return the source candidate record matching email (case-insensitive), or None if not found."
+    needle = (email or "").strip().lower()
+    if not needle:
+        return None
+    for record in CANDIDATES.values():
+        if (record.get("email") or "").strip().lower() == needle:
+            return record
+    return None
 
 
 def get_recruiter(recruiter):
