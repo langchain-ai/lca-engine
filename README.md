@@ -37,6 +37,40 @@ Create a `.env` file in the project root. It is gitignored and loaded automatica
 
 Copy `.env.example` to `.env` and fill in your own values (see the table above).
 
+### Optional: use LangSmith LLM Gateway locally
+
+Direct OpenAI access remains the default and requires your actual `OPENAI_API_KEY`.
+Gateway support uses `langchain-openai>=1.4.1` and `langchain-core>=1.5.3`; the core
+minimum includes LangSmith key fallback and correct handling of an empty flag.
+To use [LangSmith LLM Gateway](https://docs.langchain.com/langsmith/llm-gateway-direct-model-access)
+for both the recruiting agent and its scoring model, add these values to `.env`:
+
+```dotenv
+LANGSMITH_GATEWAY=true
+LANGSMITH_API_KEY=lsv2_...
+```
+
+Replace the placeholder with your real LangSmith key. Your workspace must have an
+OpenAI provider secret and access to the model in `MODEL_NAME`. No local OpenAI key
+is needed for these chat calls. Optionally set `LANGSMITH_GATEWAY_API_KEY` to a
+separate gateway key; it takes precedence over `LANGSMITH_API_KEY` for model calls.
+Keep `LANGSMITH_API_KEY` for datasets, evaluations, and tracing.
+
+`LANGSMITH_GATEWAY` accepts `true`, `1`, or `yes` for the default US gateway, or a
+regional gateway root URL such as `https://eu.gateway.smith.langchain.com`.
+Unset it or use `false`, `0`, `no`, or an empty value for direct access. Do not append
+`/openai/v1`: the integration adds it. Remove `OPENAI_API_BASE` and
+`OPENAI_BASE_URL` overrides when using this flag to avoid conflicting endpoint
+settings. `OPENAI_API_BASE` takes precedence over the flag. `LANGSMITH_ENDPOINT`
+configures the LangSmith API, not the model gateway.
+
+The recruiting agent loads `.env` with `override=True`, so `.env` takes precedence
+over shell values, including an empty value. The environment checker uses the same
+precedence. Tracing is independent: `LANGSMITH_TRACING=false` does not disable the
+gateway. The existing GitHub Actions workflow still uses direct OpenAI credentials;
+local gateway settings do not configure CI or a remote deployment. Configure the
+same variables in the process that runs the deployed agent if you use Gateway there.
+
 ### 2. Dataset names
 
 - `eval.py` resolves the dataset as `--dataset` if given, otherwise the `DATASET_NAME`
