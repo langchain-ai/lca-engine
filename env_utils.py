@@ -211,6 +211,21 @@ def _parse_required_keys(example_file_path: str) -> dict:
     return required_keys
 
 
+def _required_keys_for_mode(required_keys: dict, environ) -> dict:
+    """Select chat credentials without replacing LangSmith service credentials."""
+    required_keys = dict(required_keys)
+    gateway = environ.get("LANGSMITH_GATEWAY", "").lower()
+    if gateway not in ("", "false", "0", "no") and not environ.get("OPENAI_API_BASE"):
+        required_keys.pop("OPENAI_API_KEY", None)
+        key = (
+            "LANGSMITH_GATEWAY_API_KEY"
+            if environ.get("LANGSMITH_GATEWAY_API_KEY")
+            else "LANGSMITH_API_KEY"
+        )
+        required_keys[key] = required_keys.get(key, "lsv2_...")
+    return required_keys
+
+
 def check_env_file_exists(env_file_path: str = ".env", example_file_path: str = ".env.example"):
     """Check if .env file exists. If not, check if required variables are in system env.
 
@@ -230,7 +245,9 @@ def check_env_file_exists(env_file_path: str = ".env", example_file_path: str = 
         print()
         return False
 
-    required_keys = _parse_required_keys(example_file_path)
+    required_keys = _required_keys_for_mode(
+        _parse_required_keys(example_file_path), os.environ
+    )
     found = {}
     missing = []
 
@@ -238,7 +255,7 @@ def check_env_file_exists(env_file_path: str = ".env", example_file_path: str = 
         sys_val = os.environ.get(key)
         if sys_val is not None:
             # Check if it's still a placeholder value
-            if _is_placeholder(sys_val):
+            if not sys_val.strip() or _is_placeholder(sys_val):
                 missing.append(key)
             else:
                 found[key] = sys_val
@@ -293,15 +310,7 @@ def check_env_file_exists(env_file_path: str = ".env", example_file_path: str = 
 
 
 def check_env_conflicts(env_file_path: str):
-    """Check for conflicts between system environment variables and .env file.
-
-    This detects when users have API_KEYs in their system environment that may
-    conflict with the ones they want to use from the .env file, since load_dotenv()
-    does not override existing environment variables by default.
-
-    Args:
-        env_file_path: Path to the .env file
-    """
+    """Report values overridden by the recruiting agent's .env file."""
     if not os.path.exists(env_file_path):
         return
 
@@ -326,9 +335,8 @@ def check_env_conflicts(env_file_path: str):
         print("⚠️  ENVIRONMENT VARIABLE CONFLICTS DETECTED")
         print("=" * 70)
         print("The following environment variables are already set in your system")
-        print("environment and differ from your .env file. Since load_dotenv()")
-        print("does not override existing variables, the system values will be used,")
-        print("which may not be what you intended.")
+        print("environment and differ from your .env file. The recruiting agent uses")
+        print("load_dotenv(override=True), so .env values take precedence.")
         print()
         for conflict in conflicts:
             key = conflict['key']
@@ -336,7 +344,7 @@ def check_env_conflicts(env_file_path: str):
             if key.endswith('API_KEY'):
                 # Obscure API keys in the output
                 sys_val = "****" + conflict['system_value'][-4:] if len(conflict['system_value']) > 4 else "****"
-                file_val = "****" + conflict['file_value'][-4:] if len(conflict['file_value']) > 4 else "****"
+                file_val = "****" + conflict['file_value'][-4:] if len(conflict['file_value'] or '') > 4 else "****"
                 print(f"  System value: {sys_val}")
                 print(f"  .env value:   {file_val}")
             else:
@@ -344,23 +352,7 @@ def check_env_conflicts(env_file_path: str):
                 print(f"  .env value:   {conflict['file_value']}")
             print()
 
-        print("SOLUTIONS:")
-        print("  1. Unset the conflicting system environment variables:")
-        if sys.platform == "win32":
-            print("     CMD:")
-            for conflict in conflicts:
-                print(f"       set {conflict['key']}=")
-            print("     PowerShell:")
-            for conflict in conflicts:
-                print(f"       Remove-Item Env:\\{conflict['key']}")
-        else:
-            for conflict in conflicts:
-                print(f"       unset {conflict['key']}")
-        print()
-        print("  2. Use load_dotenv(override=True) in your notebooks to force")
-        print("     .env values to take precedence")
-        print()
-        print("  3. Update your .env file to match your system environment")
+        print("Update .env to change the values used by the recruiting agent.")
         print("=" * 70)
         print()
 
@@ -423,7 +415,7 @@ def doublecheck_env(file_path: str):
         return
 
     # Parse the example file to identify required keys and their example values
-    required_keys = _parse_required_keys(file_path)
+    required_keys = _required_keys_for_mode(_parse_required_keys(file_path), os.environ)
     all_example_values = {}
     with open(file_path, 'r') as f:
         for line in f:
@@ -444,7 +436,7 @@ def doublecheck_env(file_path: str):
     print("Environment Variables:")
     printed_keys = set()
 
-    for key in parsed.keys():
+    for key in dict.fromkeys([*parsed, *required_keys]):
         current = os.getenv(key)
         example_val = all_example_values.get(key)
 
@@ -455,7 +447,9 @@ def doublecheck_env(file_path: str):
             # Check if this required key still has the example/placeholder value
             # Only flag values that look like actual placeholders (e.g. "your-...", "lsv2_...")
             if key in required_keys:
-                if current == example_val and _is_placeholder(example_val):
+                if not current.strip():
+                    issues.append(f"  ⚠️  {key} is empty")
+                elif _is_placeholder(current):
                     issues.append(f"  ⚠️  {key} still has the example/placeholder value")
         else:
             print(f"{key}=<not set>")
@@ -680,7 +674,7 @@ if __name__ == "__main__":
         check_env_conflicts(".env")
 
         # Load environment variables from .env file
-        load_dotenv()
+        load_dotenv(".env", override=True)
 
     # Check environment variables and API keys
     doublecheck_env(".env.example")

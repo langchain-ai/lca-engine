@@ -10,8 +10,8 @@ dependencies = [
     "langgraph>=1.0",
     "langgraph-cli>=0.4.9",
     "langgraph-api>=0.5.37",
-    "langchain-openai>=0.2.0",
-    "langchain-core>=0.3.0",
+    "langchain-openai>=1.4.1",
+    "langchain-core>=1.5.3",
     "pydantic>=2.0",
     "deepagents>=0.6,<0.7",
 ]
